@@ -1,0 +1,27 @@
+[package]
+name = "candado"
+version = "0.1.0"
+edition = "2021"
+default-run = "candadocli"
+
+[dependencies]
+anyhow = "1.0.95"
+aes-gcm = "0.10.3"
+argon2 = "0.5.3"
+rpassword = "7.3.1"
+base64 = "0.22.1"
+clap = { version = "4.5.23", features = ["derive"] }
+color-eyre = "0.6.3"
+crossterm = "0.28.1"
+itertools = "0.14.0"
+rand = "0.8.5"
+ratatui = "0.29.0"
+rusqlite = { version = "0.32.1", features = ["bundled", "bundled-sqlcipher"] }
+unicode-width = "0.2.0"
+serde = { version = "1.0.217", features = ["derive"] }
+serde_json = "1.0.134"
+fuzzy-matcher = "0.3.7"
+
+[lib]
+name = "candadolib"
+path = "src/lib.rs"
