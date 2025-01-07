@@ -57,19 +57,6 @@ COMMANDS:
 ```
 
 ### Examples
-
-# Generate a password (default length: 16 characters)  
-candado gen password  
-
-# Generate a token (default length: 32 characters)  
-candado gen token  
-
-# Generate a key with custom length  
-candado gen key -l 64  
-
-# Generate a passphrase using a custom wordlist  
-candado gen passphrase -l 8 -c mywordlist.txt  
-
 #### Generate Secrets
 - Generate a password:
   ```bash
