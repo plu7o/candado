@@ -28,7 +28,7 @@ $ curl https://raw.githubusercontent.com/plu7o/candado/refs/heads/main/install.s
 ### Manual installation
 ```bash
 # Clone the repository
-$ git clone https://github.com/<your-username>/candado.git
+$ git clone https://github.com/plu7o/candado.git
 
 # Change directory
 $ cd candado
