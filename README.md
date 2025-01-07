@@ -22,7 +22,7 @@
 
 ### Script
 ```bash
-$ curl https://github.com/plu7o/candado/blob/latest/install.sh | sh
+$ curl https://raw.githubusercontent.com/plu7o/candado/refs/heads/main/install.sh | sh
 ```
 
 ### Manual installation

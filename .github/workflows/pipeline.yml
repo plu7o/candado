@@ -3,7 +3,7 @@ name: Deploy
 on:
   push:
     tags:
-      - "[0-9]+.[0-9]+.[0-9]+"
+      - "Candado V[0-9]+.[0-9]+.[0-9]+"
 
 permissions:
   contents: write
@@ -19,10 +19,6 @@ jobs:
           - build: linux
             os: ubuntu-latest
             target: x86_64-unknown-linux-musl
-
-          - build: windows-gnu
-            os: windows-latest
-            target: x86_64-pc-windows-gnu
 
     steps:
       - name: Checkout
@@ -65,3 +61,4 @@ jobs:
         with:
           files: |
             ${{ env.ASSET }}
+            install.sh
