@@ -46,8 +46,8 @@ pub fn init() -> Result<()> {
     }
 
     println!("WARNING");
-    println!("Make use to use a strong password! Do not only rely on encryption.");
-    println!("Make sure to remember your passwort or saved it in a safe location, you CAN'T recovery access if you loose your password!");
+    println!("Make sure to use a strong password! Do not only rely on encryption.");
+    println!("Make sure to remember your passwort or saved it in a safe location, you CAN'T recover access if you loose your password!");
     let password = prompt_password(format!("{} Enter Master: ", PREFIX.green()))?;
     println!("Generating new keyfile...");
     Encrypter::new(&password)?;

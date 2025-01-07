@@ -2,7 +2,7 @@ echo "Downloading Binary..."
 
 # Define variables
 REPO="plu7o/candado"
-DEST_DIR="$HOME/.local/share"
+DEST_DIR="$HOME/.local/share/candado"
 FILE_NAME="x86_64-unknown-linux-musl.tar.gz"
 
 # Fetch latest release asset URL
@@ -16,12 +16,11 @@ else
     echo "Error: File not found in the latest release."
 fi
 echo "Unpacking archive..."
-tar -xzf $HOME/.local/share/candadocli-1.0.0-x86_64-unknown-linux-musl.tar.gz -C $HOME/.local/share/
+tar -xzf $HOME/.local/share/candado/*.tar.gz -C $HOME/.local/share/candado --strip-components 1
 echo "Installing candado -> $HOME/.local/bin/candado"
-mv $HOME/.local/share/candadocli-1.0.0-x86_64-unknown-linux-musl/candadocli $HOME/.local/bin/candado
+mv $HOME/.local/share/candado/candadocli $HOME/.local/bin/candado
 echo "Cleaning up install..."
-rm $HOME/.local/share/candadocli-1.0.0-x86_64-unknown-linux-musl.tar.gz
-rm -rf $HOME/.local/share/candadocli-1.0.0-x86_64-unknown-linux-musl/
+rm -rf $HOME/.local/share/candado
 echo "Done"
 echo ""
 echo "run:" 
