@@ -25,3 +25,4 @@ fuzzy-matcher = "0.3.7"
 [lib]
 name = "candadolib"
 path = "src/lib.rs"
+

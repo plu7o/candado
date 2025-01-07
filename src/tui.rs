@@ -186,7 +186,7 @@ impl TableApp {
             .map(Cell::from)
             .collect::<Row>()
             .style(header_style)
-            .height(1);
+            .height(2);
 
         let rows = self.items.iter().enumerate().map(|(i, data)| {
             let item = data.ref_array();
@@ -196,22 +196,22 @@ impl TableApp {
                     if pos == 3
                         && !(self.unlocked && self.state.selected().or(Some(0)).unwrap() == i)
                     {
-                        return Cell::from(Text::from(format!("\n{}\n", "************")));
+                        return Cell::from(Text::from(format!("{}", "*".repeat(content.len()))));
                     }
-                    Cell::from(Text::from(format!("\n{content}\n")))
+                    Cell::from(Text::from(format!("{content}")))
                 })
                 .collect::<Row>()
                 .style(Style::new().fg(self.colors.row_fg))
-                .height(3)
+                .height(2)
         });
         let bar = " \u{f111} ";
         let t = Table::new(
             rows,
             [
-                Constraint::Length(self.longest_item_lens.0 + 1),
+                Constraint::Length(self.longest_item_lens.0 + 4),
                 Constraint::Min(self.longest_item_lens.1),
                 Constraint::Min(self.longest_item_lens.2),
-                Constraint::Min(self.longest_item_lens.3 + 1),
+                Constraint::Min(self.longest_item_lens.3 + 4),
                 Constraint::Min(self.longest_item_lens.4),
                 Constraint::Min(self.longest_item_lens.5),
             ],
@@ -220,7 +220,7 @@ impl TableApp {
         .row_highlight_style(selected_row_style)
         .column_highlight_style(selected_col_style)
         .cell_highlight_style(selected_cell_style)
-        .highlight_symbol(Text::from(vec!["".into(), bar.into(), "".into()]))
+        .highlight_symbol(Text::from(vec![bar.into()]))
         .highlight_spacing(HighlightSpacing::Always);
         frame.render_stateful_widget(t, area, &mut self.state);
     }
@@ -294,18 +294,14 @@ pub enum App {
     Table(TableApp),
 }
 
-pub struct CandadoTui {}
+pub fn init(app: App) -> Result<()> {
+    color_eyre::install().map_err(|e| anyhow!("{e}"))?;
+    let terminal = ratatui::init();
 
-impl CandadoTui {
-    pub fn init(app: App) -> Result<()> {
-        color_eyre::install().map_err(|e| anyhow!("{e}"))?;
-        let terminal = ratatui::init();
+    let app_result = match app {
+        App::Table(app) => app.run(terminal),
+    };
 
-        let app_result = match app {
-            App::Table(app) => app.run(terminal),
-        };
-
-        ratatui::restore();
-        app_result
-    }
+    ratatui::restore();
+    app_result
 }

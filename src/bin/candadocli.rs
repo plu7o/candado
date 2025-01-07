@@ -1,6 +1,6 @@
 use candadolib::{
     add, export, find, import, init, key, login, ls, passphrase, password, read, rm, token,
-    tui::{App, CandadoTui, TableApp},
+    tui::{self, App, TableApp},
     update, ABOUT, VERSION,
 };
 use clap::{Parser, Subcommand};
@@ -149,17 +149,17 @@ impl CandadoCLI {
                 Command::Ls => {
                     let encrypter = login()?;
                     let entries = ls(encrypter)?;
-                    CandadoTui::init(App::Table(TableApp::new(entries)?))
+                    tui::init(App::Table(TableApp::new(entries)?))
                 }
                 Command::Find { query } => {
                     let encrypter = login()?;
                     let entries = find(encrypter, query)?;
-                    CandadoTui::init(App::Table(TableApp::new(entries)?))
+                    tui::init(App::Table(TableApp::new(entries)?))
                 }
                 Command::Inspect { id } => {
                     let encrypter = login()?;
                     let entry = read(encrypter, id)?;
-                    CandadoTui::init(App::Table(TableApp::new(vec![entry])?))
+                    tui::init(App::Table(TableApp::new(vec![entry])?))
                 }
                 Command::Add {
                     service,

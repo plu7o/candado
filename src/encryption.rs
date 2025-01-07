@@ -22,26 +22,6 @@ pub struct Encrypter {
 }
 
 impl Encrypter {
-    pub fn unlock(master: &str) -> Result<Self, anyhow::Error> {
-        let (salt, hash, ekey) = match Encrypter::load_keyfile_path() {
-            Ok(keyfile) => Encrypter::load_keyfile(keyfile)?,
-            Err(e) => {
-                return Err(anyhow!("{e} -> use init to initialize a new vault"));
-            }
-        };
-
-        let dkey = Encrypter::derive(&salt, master)?;
-        if !Encrypter::verify(&hash, &STANDARD.encode(&dkey)) {
-            std::thread::sleep(Duration::new(5, 0));
-            return Err(anyhow!("Authentication Failed -> Wrong password."));
-        }
-
-        Ok(Self {
-            derived_key: dkey,
-            encrpytion_key: ekey,
-        })
-    }
-
     pub fn new(master: &str) -> Result<PathBuf, anyhow::Error> {
         // Generate Salt
         let mut salt = [0u8; 16];
@@ -69,6 +49,26 @@ impl Encrypter {
         Ok(Encrypter::load_keyfile_path()?)
     }
 
+    pub fn unlock(master: &str) -> Result<Self, anyhow::Error> {
+        let (salt, hash, ekey) = match Encrypter::load_keyfile_path() {
+            Ok(keyfile) => Encrypter::load_keyfile(keyfile)?,
+            Err(e) => {
+                return Err(anyhow!("{e} -> use init to initialize a new vault"));
+            }
+        };
+
+        let dkey = Encrypter::derive(&salt, master)?;
+        if !Encrypter::verify(&hash, &STANDARD.encode(&dkey)) {
+            std::thread::sleep(Duration::new(5, 0));
+            return Err(anyhow!("Authentication Failed -> Wrong password."));
+        }
+
+        Ok(Self {
+            derived_key: dkey,
+            encrpytion_key: ekey,
+        })
+    }
+
     fn hash(password: &str) -> Result<String> {
         let argon2 = Argon2::default();
         let salt = SaltString::generate(&mut OsRng);
@@ -77,6 +77,14 @@ impl Encrypter {
             .map_err(|e| anyhow!("Failed to hash password: {e}"))?
             .to_string();
         Ok(hash)
+    }
+
+    fn verify(hash: &str, key: &str) -> bool {
+        let argon2 = Argon2::default();
+        let parsed = PasswordHash::new(hash)
+            .map_err(|e| anyhow!("Error verifing hash: {e}"))
+            .expect(&format!("Invalid password hash: {hash}"));
+        argon2.verify_password(key.as_bytes(), &parsed).is_ok()
     }
 
     fn derive(salt: &[u8], master: &str) -> Result<Vec<u8>> {
@@ -88,15 +96,7 @@ impl Encrypter {
         Ok(derived_key.to_vec())
     }
 
-    fn verify(hash: &str, key: &str) -> bool {
-        let argon2 = Argon2::default();
-        let parsed = PasswordHash::new(hash)
-            .map_err(|e| anyhow!("Error verifing hash: {e}"))
-            .expect(&format!("Invalid password hash: {hash}"));
-        argon2.verify_password(key.as_bytes(), &parsed).is_ok()
-    }
-
-    pub fn gen_master_key(&self) -> Result<Key<Aes256Gcm>> {
+    pub fn master_key(&self) -> Result<Key<Aes256Gcm>> {
         let dkey = Key::<Aes256Gcm>::from_slice(&self.derived_key);
         let cypher = Aes256Gcm::new(dkey);
         let (nonce, key) = if let Some((nonce, key)) = self.encrpytion_key.split_once(":") {
@@ -115,7 +115,7 @@ impl Encrypter {
     }
 
     pub fn decrypt(&self, payload: &[u8]) -> Result<String, anyhow::Error> {
-        let rkey = self.gen_master_key()?;
+        let rkey = self.master_key()?;
         let cypher = Aes256Gcm::new(&rkey);
         let content = String::from_utf8_lossy(&payload).to_string();
 
@@ -137,7 +137,7 @@ impl Encrypter {
     }
 
     pub fn encrypt(&self, plain: &str) -> Result<Vec<u8>, anyhow::Error> {
-        let rkey = self.gen_master_key()?;
+        let rkey = self.master_key()?;
 
         let cypher = Aes256Gcm::new(&rkey);
         let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
