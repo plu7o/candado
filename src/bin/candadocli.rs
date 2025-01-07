@@ -115,30 +115,30 @@ enum Command {
 impl CandadoCLI {
     pub fn run() -> Result<(), anyhow::Error> {
         let cli = CandadoCLI::parse();
-        match &cli.apps {
-            Apps::Gen(gen) => match &gen.generator {
+        match cli.apps {
+            Apps::Gen(gen) => match gen.generator {
                 Generator::Password { length } => {
-                    let pass = password(*length);
+                    let pass = password(length);
                     println!("{pass}");
                     Ok(())
                 }
                 Generator::Token { length } => {
-                    let token = token(*length);
+                    let token = token(length);
                     println!("{token}");
                     Ok(())
                 }
                 Generator::Key { length } => {
-                    let key = key(*length);
+                    let key = key(length);
                     println!("{key}");
                     Ok(())
                 }
                 Generator::Passphrase { length, wordlist } => {
-                    let phrase = passphrase(*length, wordlist);
+                    let phrase = passphrase(length, &wordlist);
                     println!("{phrase}");
                     Ok(())
                 }
             },
-            Apps::Vault(manager) => match &manager.command {
+            Apps::Vault(manager) => match manager.command {
                 Command::Init => {
                     match init() {
                         Ok(()) => println!("Vault Created!"),
@@ -153,12 +153,12 @@ impl CandadoCLI {
                 }
                 Command::Find { query } => {
                     let encrypter = login()?;
-                    let entries = find(encrypter, query)?;
+                    let entries = find(encrypter, &query)?;
                     tui::init(App::Table(TableApp::new(entries)?))
                 }
                 Command::Inspect { id } => {
                     let encrypter = login()?;
-                    let entry = read(encrypter, id)?;
+                    let entry = read(encrypter, &id)?;
                     tui::init(App::Table(TableApp::new(vec![entry])?))
                 }
                 Command::Add {
@@ -184,7 +184,7 @@ impl CandadoCLI {
                     url,
                 } => {
                     let encrypter = login()?;
-                    match update(encrypter, id, service, email, password, username, url) {
+                    match update(encrypter, &id, service, email, password, username, url) {
                         Ok(()) => println!("Entry updated: OK"),
                         Err(e) => println!("{e}"),
                     }
@@ -192,7 +192,7 @@ impl CandadoCLI {
                 }
                 Command::Rm { id } => {
                     let encrypter = login()?;
-                    match rm(encrypter, id) {
+                    match rm(encrypter, &id) {
                         Ok(()) => println!("Entry deleted: OK"),
                         Err(e) => println!("{e}"),
                     }
@@ -200,7 +200,7 @@ impl CandadoCLI {
                 }
                 Command::Import { file } => {
                     let encrypter = login()?;
-                    match import(encrypter, file.clone()) {
+                    match import(encrypter, file) {
                         Ok(()) => println!("Import: OK"),
                         Err(e) => println!("{e}"),
                     }
@@ -208,8 +208,8 @@ impl CandadoCLI {
                 }
                 Command::Export { file } => {
                     let encrypter = login()?;
-                    match export(encrypter, file.clone()) {
-                        Ok(()) => println!("Export: OK -> written to {:?}", file),
+                    match export(encrypter, file) {
+                        Ok(()) => println!("Export: OK"),
                         Err(e) => println!("{e}"),
                     }
                     Ok(())

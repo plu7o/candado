@@ -65,24 +65,25 @@ pub fn read(encrypter: Encrypter, id: &str) -> Result<Entry, anyhow::Error> {
 
 pub fn add(
     encrypter: Encrypter,
-    service: &str,
-    email: &str,
-    password: &Option<String>,
-    username: &Option<String>,
-    url: &Option<String>,
+    service: String,
+    email: String,
+    password: Option<String>,
+    username: Option<String>,
+    url: Option<String>,
 ) -> Result<(), anyhow::Error> {
     let password = if let Some(pass) = password {
         pass.to_owned()
     } else {
         generators::gen_passphrase(4, &None)
     };
+
     let entry = Entry::new(
         generators::gen_key(12),
-        service.to_owned(),
-        email.to_owned(),
+        service,
+        email,
         password,
-        username.clone().or(Some("".to_string())).unwrap(),
-        url.clone().or(Some("".to_string())).unwrap(),
+        username.unwrap_or("".to_string()),
+        url.unwrap_or("".to_string()),
     );
     Storage::init(&encrypter)?.write(entry)
 }
@@ -90,19 +91,19 @@ pub fn add(
 pub fn update(
     encrypter: Encrypter,
     id: &str,
-    service: &Option<String>,
-    email: &Option<String>,
-    password: &Option<String>,
-    username: &Option<String>,
-    url: &Option<String>,
+    service: Option<String>,
+    email: Option<String>,
+    password: Option<String>,
+    username: Option<String>,
+    url: Option<String>,
 ) -> Result<()> {
     let storage = Storage::init(&encrypter)?;
     let mut entry = storage.read(id)?;
-    entry.service = service.clone().unwrap_or(entry.service);
-    entry.email = email.clone().unwrap_or(entry.email);
-    entry.password = password.clone().unwrap_or(entry.password);
-    entry.username = username.clone().unwrap_or(entry.username);
-    entry.url = url.clone().unwrap_or(entry.url);
+    entry.service = service.unwrap_or(entry.service);
+    entry.email = email.unwrap_or(entry.email);
+    entry.password = password.unwrap_or(entry.password);
+    entry.username = username.unwrap_or(entry.username);
+    entry.url = url.unwrap_or(entry.url);
     storage.update(entry)
 }
 

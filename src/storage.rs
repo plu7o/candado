@@ -19,17 +19,17 @@ impl<'unlocked> Storage<'unlocked> {
     pub fn init(encrypter: &'unlocked Encrypter) -> Result<Self> {
         // Linux
         #[cfg(target_os = "linux")]
-        let path = format!("{}/.candado/candado.db", std::env::var("HOME")?);
+        let db_path = format!("{}/.candado/candado.db", std::env::var("HOME")?);
 
         // MacOs
         #[cfg(target_os = "macos")]
-        let path = format!("{}/.candado/candado.db", std::env::var("HOME")?);
+        let db_path = format!("{}/.candado/candado.db", std::env::var("HOME")?);
 
         // windows
-        // #[cfg(target_os = "windows")]
-        // let path = format!("{}/.candado/.candado.db", std::env::var("USERHOME")?);
+        #[cfg(target_os = "windows")]
+        let db_path = format!("{}/.candado/.candado.db", std::env::var("USERHOME")?);
 
-        let db_path = Path::new(&path);
+        let db_path = Path::new(&db_path);
         if !db_path.exists() {
             File::create(db_path)?;
             let permissions = std::fs::Permissions::from_mode(0o600);
@@ -37,7 +37,6 @@ impl<'unlocked> Storage<'unlocked> {
         }
 
         let conn = Connection::open(db_path)?;
-        // conn.pragma_update(None, "key", &encrypter.derived_key)?;
         conn.execute(
             "CREATE TABLE IF NOT EXISTS candado (
             id INTEGER PRIMARY KEY,
@@ -152,22 +151,17 @@ impl<'unlocked> Storage<'unlocked> {
         Ok(result)
     }
 
-    pub fn load_json(path: PathBuf) -> Result<SupportedFile> {
-        Ok(SupportedFile::JSON(fs::read_to_string(path)?))
-    }
-    
-    pub fn load_sqldump(path: PathBuf) -> Result<SupportedFile> {
-        Ok(SupportedFile::SQL(fs::read_to_string(path)?))
+    pub fn load_json(source: PathBuf) -> Result<SupportedFile> {
+        Ok(SupportedFile::JSON(fs::read_to_string(source)?))
     }
 
     /// (optional add different import formats sql.dump
     /// for now lets support json)
     pub fn import(&mut self, filepath: PathBuf) -> Result<()> {
-        let file = if let Some(path) = filepath.extension() {
-            // verify corret file
-            match path.to_str() {
+        // verify corret file
+        let file = if let Some(extention) = filepath.extension() {
+            match extention.to_str() {
                 Some("json") => Storage::load_json(filepath)?,
-                Some("sql") => Storage::load_sqldump(filepath)?,
                 _ => return Err(anyhow!("File not supported")),
             }
         } else {
@@ -179,22 +173,20 @@ impl<'unlocked> Storage<'unlocked> {
             SupportedFile::JSON(data) => {
                 let entries: Vec<ImportEntry> = serde_json::from_str(&data)?;
                 let total = entries.len();
-                for (i, import) in entries.into_iter().enumerate() {
-                    let percent = ((i + 1) as f64 / total as f64) * 100.0;
-                    // Create the loading bar string
-                    let bar = "=".repeat(percent.ceil() as usize) + &" ".repeat((100.0 - percent).ceil() as usize);
-                    // Print the loading bar on the same line
 
+                for (i, import) in entries.into_iter().enumerate() {
+                    // loading bar
+                    let percent = ((i + 1) as f64 / total as f64) * 100.0;
+                    let bar = "=".repeat(percent.ceil() as usize) + &" ".repeat((100.0 - percent).ceil() as usize);
                     print!("\r[{}] {:.0}% | [{}/{}]", bar, percent, i + 1, total);
-                    // Flush the output to make it appear immediately
                     std::io::stdout().flush().unwrap();
-                    // Simulate work by sleeping
+
                     let entry = Entry::from(import);
                     self.write(entry)?;
                 }
                 println!("");
             }
-            SupportedFile::SQL(_data) => todo!(".sql imports are not supported yet")
+            _ => todo!("import of this type are not supported yet")
         }
         Ok(())
     }

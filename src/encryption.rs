@@ -166,17 +166,17 @@ impl Encrypter {
     pub fn load_keyfile_path() -> Result<PathBuf, anyhow::Error> {
         // Linux
         #[cfg(target_os = "linux")]
-        let path = format!("{}/.candado/.candado.key", std::env::var("HOME")?);
+        let keypath = format!("{}/.candado/.candado.key", std::env::var("HOME")?);
 
         // MacOs
         #[cfg(target_os = "macos")]
-        let path = format!("{}/.candado/.candado.key", std::env::var("HOME")?);
+        let keypath = format!("{}/.candado/.candado.key", std::env::var("HOME")?);
 
         // windows
-        // #[cfg(target_os = "windows")]
-        // let path = format!("{}/.passlock/passlock.key", std::env::var("USERHOME")?);
+        #[cfg(target_os = "windows")]
+        let keypath = format!("{}/.passlock/passlock.key", std::env::var("USERHOME")?);
 
-        let keyfile = Path::new(&path);
+        let keyfile = Path::new(&keypath);
         if !keyfile.exists() {
             return Err(anyhow!("Keyfile not found"));
         }
@@ -187,26 +187,25 @@ impl Encrypter {
     fn write(salt: String, hash: String, ekey: String) -> Result<(), anyhow::Error> {
         // Linux
         #[cfg(target_os = "linux")]
-        let path = format!("{}/.candado", std::env::var("HOME")?);
+        let dir_path = format!("{}/.candado", std::env::var("HOME")?);
 
         // MacOs
         #[cfg(target_os = "macos")]
-        let path = format!("{}/.candado", std::env::var("HOME")?);
+        let dir_path = format!("{}/.candado", std::env::var("HOME")?);
 
         // windows
         // #[cfg(target_os = "windows")]
-        // let path = format!("{}/.passlock/passlock.key", std::env::var("USERHOME")?);
+        // let dir_path = format!("{}/.passlock/passlock.key", std::env::var("USERHOME")?);
 
-        let dir = Path::new(&path);
-
-        if !dir.exists() {
-            fs::create_dir(dir)?;
+        let dir_path = Path::new(&dir_path);
+        if !dir_path.exists() {
+            fs::create_dir(dir_path)?;
             let permissions = std::fs::Permissions::from_mode(0o700);
-            std::fs::set_permissions(dir, permissions)?;
+            std::fs::set_permissions(dir_path, permissions)?;
         }
 
-        let path = format!("{}/.candado/.candado.key", std::env::var("HOME")?);
-        let keypath = Path::new(&path);
+        let keypath = format!("{}/.candado/.candado.key", std::env::var("HOME")?);
+        let keypath = Path::new(&keypath);
         let mut keyfile = File::options().write(true).create(true).open(keypath)?;
         let payload = format!("{} {} {}", salt, hash, ekey);
 
