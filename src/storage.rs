@@ -21,6 +21,10 @@ impl<'unlocked> Storage<'unlocked> {
         #[cfg(target_os = "linux")]
         let path = format!("{}/.candado/candado.db", std::env::var("HOME")?);
 
+        // MacOs
+        #[cfg(target_os = "macos")]
+        let path = format!("{}/.candado/candado.db", std::env::var("HOME")?);
+
         // windows
         // #[cfg(target_os = "windows")]
         // let path = format!("{}/.candado/.candado.db", std::env::var("USERHOME")?);

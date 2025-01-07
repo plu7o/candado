@@ -168,6 +168,10 @@ impl Encrypter {
         #[cfg(target_os = "linux")]
         let path = format!("{}/.candado/.candado.key", std::env::var("HOME")?);
 
+        // MacOs
+        #[cfg(target_os = "macos")]
+        let path = format!("{}/.candado/.candado.key", std::env::var("HOME")?);
+
         // windows
         // #[cfg(target_os = "windows")]
         // let path = format!("{}/.passlock/passlock.key", std::env::var("USERHOME")?);
@@ -183,6 +187,10 @@ impl Encrypter {
     fn write(salt: String, hash: String, ekey: String) -> Result<(), anyhow::Error> {
         // Linux
         #[cfg(target_os = "linux")]
+        let path = format!("{}/.candado", std::env::var("HOME")?);
+
+        // MacOs
+        #[cfg(target_os = "macos")]
         let path = format!("{}/.candado", std::env::var("HOME")?);
 
         // windows
