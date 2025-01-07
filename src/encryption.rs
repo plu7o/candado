@@ -169,8 +169,8 @@ impl Encrypter {
         let keypath = format!("{}/.candado/.candado.key", std::env::var("HOME")?);
 
         // MacOs
-        #[cfg(target_os = "macos")]
-        let keypath = format!("{}/.candado/.candado.key", std::env::var("HOME")?);
+        // #[cfg(target_os = "macos")]
+        // let keypath = format!("{}/.candado/.candado.key", std::env::var("HOME")?);
 
         // windows
         #[cfg(target_os = "windows")]
@@ -190,8 +190,8 @@ impl Encrypter {
         let dir_path = format!("{}/.candado", std::env::var("HOME")?);
 
         // MacOs
-        #[cfg(target_os = "macos")]
-        let dir_path = format!("{}/.candado", std::env::var("HOME")?);
+        // #[cfg(target_os = "macos")]
+        // let dir_path = format!("{}/.candado", std::env::var("HOME")?);
 
         // windows
         // #[cfg(target_os = "windows")]
