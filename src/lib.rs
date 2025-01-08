@@ -13,7 +13,7 @@ pub use storage::Storage;
 use anyhow::Result;
 use std::path::PathBuf;
 
-pub const VERSION: &str = "V1.0.2";
+pub const VERSION: &str = "V1.0.3";
 pub const ABOUT: &str = "Candado a Local Encrypted Password Manager & Secret Generator";
 pub const PREFIX: &str = "Candado \u{f023}";
 pub const PROGRAM_FOLDER: &str = ".candado";
