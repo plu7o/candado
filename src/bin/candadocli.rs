@@ -1,10 +1,11 @@
+use anyhow::anyhow;
 use candadolib::{
-    add, export, find, import, init, key, login, ls, passphrase, password, read, rm, token,
+    add, export, find, import, init, key, ls, passphrase, password, read, rm, token,
     tui::{self, App, TableApp},
-    update, ABOUT, VERSION,
+    unlock, update, Encrypter, ABOUT, VERSION,
 };
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
+use std::{fs, io::Write, path::PathBuf};
 
 #[derive(Parser)]
 #[command(version = VERSION, about = ABOUT, long_about = None)]
@@ -140,6 +141,33 @@ impl CandadoCLI {
             },
             Apps::Vault(manager) => match manager.command {
                 Command::Init => {
+                    println!("Initializing new Vault!");
+
+                    if Encrypter::load_keyfile_path().is_ok() {
+                        println!("WARNING there is already a existing Vault!");
+                        println!("continue to permantly DELETE the exsting vault.");
+                        print!("Are you sure to continue? [y/n]: ");
+                        std::io::stdout().flush().unwrap();
+
+                        let mut buffer = String::new();
+                        std::io::stdin().read_line(&mut buffer)?;
+
+                        match buffer.trim() {
+                            "y" | "Y" | "yes" | "YES" => {
+                                println!("Deleting vault...");
+                                let path = format!("{}/.candado", std::env::var("HOME")?);
+                                fs::remove_dir_all(path)?;
+                            }
+                            _ => {
+                                return Err(anyhow!("Aborted."));
+                            }
+                        }
+                    }
+
+                    println!("WARNING");
+                    println!("Make sure to use a strong password! Do not only rely on encryption.");
+                    println!("Make sure to remember your passwort or save it in a safe location, you CAN'T recover access if you loose your password!");
+
                     match init() {
                         Ok(()) => println!("Vault Created!"),
                         Err(e) => println!("{e}"),
@@ -147,17 +175,17 @@ impl CandadoCLI {
                     Ok(())
                 }
                 Command::Ls => {
-                    let encrypter = login()?;
+                    let encrypter = unlock()?;
                     let entries = ls(encrypter)?;
                     tui::init(App::Table(TableApp::new(entries)?))
                 }
                 Command::Find { query } => {
-                    let encrypter = login()?;
+                    let encrypter = unlock()?;
                     let entries = find(encrypter, &query)?;
                     tui::init(App::Table(TableApp::new(entries)?))
                 }
                 Command::Inspect { id } => {
-                    let encrypter = login()?;
+                    let encrypter = unlock()?;
                     let entry = read(encrypter, &id)?;
                     tui::init(App::Table(TableApp::new(vec![entry])?))
                 }
@@ -168,7 +196,7 @@ impl CandadoCLI {
                     username,
                     url,
                 } => {
-                    let encrypter = login()?;
+                    let encrypter = unlock()?;
                     match add(encrypter, service, email, password, username, url) {
                         Ok(()) => println!("Entry added: OK"),
                         Err(e) => println!("{e}"),
@@ -183,7 +211,7 @@ impl CandadoCLI {
                     username,
                     url,
                 } => {
-                    let encrypter = login()?;
+                    let encrypter = unlock()?;
                     match update(encrypter, &id, service, email, password, username, url) {
                         Ok(()) => println!("Entry updated: OK"),
                         Err(e) => println!("{e}"),
@@ -191,7 +219,7 @@ impl CandadoCLI {
                     Ok(())
                 }
                 Command::Rm { id } => {
-                    let encrypter = login()?;
+                    let encrypter = unlock()?;
                     match rm(encrypter, &id) {
                         Ok(()) => println!("Entry deleted: OK"),
                         Err(e) => println!("{e}"),
@@ -199,7 +227,7 @@ impl CandadoCLI {
                     Ok(())
                 }
                 Command::Import { file } => {
-                    let encrypter = login()?;
+                    let encrypter = unlock()?;
                     match import(encrypter, file) {
                         Ok(()) => println!("Import: OK"),
                         Err(e) => println!("{e}"),
@@ -207,7 +235,7 @@ impl CandadoCLI {
                     Ok(())
                 }
                 Command::Export { file } => {
-                    let encrypter = login()?;
+                    let encrypter = unlock()?;
                     match export(encrypter, file) {
                         Ok(()) => println!("Export: OK"),
                         Err(e) => println!("{e}"),

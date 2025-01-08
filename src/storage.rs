@@ -1,6 +1,6 @@
-use std::{fs::{self, File}, io::Write, os::unix::fs::PermissionsExt, path::{Path, PathBuf}};
+use std::{fs::{self, File, Permissions}, io::Write, os::unix::fs::PermissionsExt, path::{Path, PathBuf}};
 
-use crate::{entry::{Entry, ImportEntry, RawEntry}, Encrypter};
+use crate::{entry::{Decrypt, Encrypt, EncryptedEntry, Entry, ImportedEntry}, Encrypter, PROGRAM_FOLDER};
 use anyhow::{anyhow, Result};
 use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
 use rusqlite::{params, Connection};
@@ -16,24 +16,38 @@ pub struct Storage<'unlocked> {
 }
 
 impl<'unlocked> Storage<'unlocked> {
+    /// Initialize storage
+    ///
+    /// # Params
+    /// * Needs a Encrypter instace to encrypt & decrypt entries
+    /// 
+    /// # Panics
+    /// This function will panic if:
+    /// * fails to create and set permission of db
+    /// * fails to connect to db
+    ///
+    /// # Basic usage:
+    /// 
+    /// let password: &str = "password";
+    /// let enc = Encrypter::unlock(password)?;
+    /// let storage = Storage::init(&encrypter)?;
+    /// 
     pub fn init(encrypter: &'unlocked Encrypter) -> Result<Self> {
         // Linux
         #[cfg(target_os = "linux")]
-        let db_path = format!("{}/.candado/candado.db", std::env::var("HOME")?);
+        let db_path = format!("{}/{}/candado.db", std::env::var("HOME")?, PROGRAM_FOLDER);
 
+        // NOTE: Support for Mac os and Windows will be added in the future
         // MacOs
         // #[cfg(target_os = "macos")]
         // let db_path = format!("{}/.candado/candado.db", std::env::var("HOME")?);
-
         // windows
-        #[cfg(target_os = "windows")]
-        let db_path = format!("{}/.candado/.candado.db", std::env::var("USERHOME")?);
+        // #[cfg(target_os = "windows")]
+        // let db_path = format!("{}/.candado/.candado.db", std::env::var("USERHOME")?);
 
         let db_path = Path::new(&db_path);
         if !db_path.exists() {
-            File::create(db_path)?;
-            let permissions = std::fs::Permissions::from_mode(0o600);
-            std::fs::set_permissions(db_path, permissions)?;
+            File::create(db_path)?.set_permissions(Permissions::from_mode(0o600))?;
         }
 
         let conn = Connection::open(db_path)?;
@@ -53,22 +67,50 @@ impl<'unlocked> Storage<'unlocked> {
         Ok(storage)
     }
 
-    pub fn write(&self, entry: Entry) -> Result<()> {
+    /// write a single entry to the vault
+    /// 
+    /// # Panics
+    /// This function will panic if:
+    /// * fails to write to db
+    /// * can't encrypt entry
+    ///
+    /// # Basic usage:
+    /// 
+    /// let password: &str = "password";
+    /// let enc = Encrypter::unlock(password)?;
+    /// let storage = Storage::init(&encrypter)?;
+    /// let entry = Entry::default;
+    /// let result = storage.write(entry); 
+    /// 
+    pub fn write<T: Encrypt>(&self, entry: T) -> Result<()> {
+        let entry = entry.encrypt(&self.encrypter)?;
         self.conn.execute(
             "INSERT INTO candado (entry_id, service, email, password, username, url) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
                 entry.id, 
-                self.encrypter.encrypt(&entry.service)?, 
-                self.encrypter.encrypt(&entry.email)?, 
-                self.encrypter.encrypt(&entry.password)?, 
-                self.encrypter.encrypt(&entry.username)?, 
-                self.encrypter.encrypt(&entry.url)?,
+                entry.service, 
+                entry.email, 
+                entry.password, 
+                entry.username, 
+                entry.url,
             ],
         )?;
         Ok(())
     }
 
-
+    /// removes a single entry by id from the vault
+    /// 
+    /// # Panics
+    /// This function will panic if:
+    /// * fails to write to db
+    ///
+    /// # Basic usage:
+    /// 
+    /// let password: &str = "password";
+    /// let enc = Encrypter::unlock(password)?;
+    /// let storage = Storage::init(&encrypter)?;
+    /// let result = storage.delete("jkdfnF54ms");
+    /// 
     pub fn remove(&self, id: &str) -> Result<()> {
         self.conn.execute(
             "DELETE FROM candado WHERE entry_id=?1",
@@ -77,10 +119,24 @@ impl<'unlocked> Storage<'unlocked> {
         Ok(())
     }
 
+    /// read a single entry by id from the vault
+    /// 
+    /// # Panics
+    /// This function will panic if:
+    /// * fails to read from db
+    /// * can't decrypt the entries
+    ///
+    /// # Basic usage:
+    /// 
+    /// let password: &str = "password";
+    /// let enc = Encrypter::unlock(password)?;
+    /// let storage = Storage::init(&encrypter)?;
+    /// let entry: Entry = storage.read("jkdfnF54ms")?;
+    /// 
     pub fn read(&self, id: &str) -> Result<Entry> {
         let mut stmt = self.conn.prepare("SELECT * FROM candado WHERE entry_id=?1")?;
         let entry = stmt.query_row(params![id], |row| {
-            Ok(RawEntry {
+            Ok(EncryptedEntry{
                 id: row.get(1)?,
                 service: row.get(2)?,
                 email: row.get(3)?,
@@ -89,32 +145,54 @@ impl<'unlocked> Storage<'unlocked> {
                 url: row.get(6)?,
             })
         })?;
-        let entry = Entry::new(
-            entry.id, 
-            self.encrypter.decrypt(&entry.service)?, 
-            self.encrypter.decrypt(&entry.email)?, 
-            self.encrypter.decrypt(&entry.password)?, 
-            self.encrypter.decrypt(&entry.username)?, 
-            self.encrypter.decrypt(&entry.url)?,
-        );
+        let entry = entry.decrypt(&self.encrypter)?;
         Ok(entry)
     }
 
-    pub fn update(&self, entry: Entry) -> Result<()> {
+    /// updates an entry in the vault
+    /// 
+    /// # Panics
+    /// This function will panic if:
+    /// * fails to write to db
+    /// * can't encrypt the entry
+    ///
+    /// # Basic usage:
+    /// 
+    /// let password: &str = "password";
+    /// let enc = Encrypter::unlock(password)?;
+    /// let storage = Storage::init(&encrypter)?;
+    /// let entries: Vec<Entry> = storage.find("some service")?;
+    /// 
+    pub fn update<T: Encrypt>(&self, entry: T) -> Result<()> {
+        let entry = entry.encrypt(&self.encrypter)?;
         self.conn.execute(
             "UPDATE candado SET service=?2, email=?3, password=?4, username=?5, url=?6 WHERE entry_id=?1",
             params![
                 entry.id, 
-                self.encrypter.encrypt(&entry.service)?, 
-                self.encrypter.encrypt(&entry.email)?, 
-                self.encrypter.encrypt(&entry.password)?, 
-                self.encrypter.encrypt(&entry.username)?, 
-                self.encrypter.encrypt(&entry.url)?,
+                entry.service, 
+                entry.email, 
+                entry.password, 
+                entry.username, 
+                entry.url,
             ],
         )?;
         Ok(())
     }
 
+    /// gets a list of decrypted entries from vault matching the query
+    /// 
+    /// # Panics
+    /// This function will panic if:
+    /// * fails to read db
+    /// * can't decrypt entries
+    ///
+    /// # Basic usage:
+    /// 
+    /// let password: &str = "password";
+    /// let enc = Encrypter::unlock(password)?;
+    /// let storage = Storage::init(&encrypter)?;
+    /// let entries: Vec<Entry> = storage.find("some service")?;
+    /// 
     pub fn find(&self, query: &str) -> Result<Vec<Entry>> {
         let matcher = SkimMatcherV2::default();
         let entries = self.list()?;
@@ -124,10 +202,24 @@ impl<'unlocked> Storage<'unlocked> {
         Ok(result)
     }
 
+    /// gets a list of decrypted entries from vault
+    /// 
+    /// # Panics
+    /// This function will panic if:
+    /// * fails to read db
+    /// * can't decrypt entries
+    ///
+    /// # Basic usage:
+    /// 
+    /// let password: &str = "password";
+    /// let enc = Encrypter::unlock(password)?;
+    /// let storage = Storage::init(&encrypter)?;
+    /// let entries: Vec<Entry> = storage.list()?;
+    /// 
     pub fn list(&self) -> Result<Vec<Entry>> {
         let mut stmt = self.conn.prepare("SELECT * FROM candado")?;
         let enries = stmt.query_map([], |row| {
-            Ok(RawEntry {
+            Ok(EncryptedEntry {
                 id: row.get(1)?,
                 service: row.get(2)?,
                 email: row.get(3)?,
@@ -139,14 +231,7 @@ impl<'unlocked> Storage<'unlocked> {
         let mut result: Vec<Entry> = vec![];
         for entry in enries {
             let entry = entry.unwrap();
-            result.push(Entry::new(
-                entry.id, 
-                self.encrypter.decrypt(&entry.service)?, 
-                self.encrypter.decrypt(&entry.email)?, 
-                self.encrypter.decrypt(&entry.password)?, 
-                self.encrypter.decrypt(&entry.username)?, 
-                self.encrypter.decrypt(&entry.url)?,
-            ));
+            result.push(entry.decrypt(&self.encrypter)?);
         }
         Ok(result)
     }
@@ -155,8 +240,24 @@ impl<'unlocked> Storage<'unlocked> {
         Ok(SupportedFile::JSON(fs::read_to_string(source)?))
     }
 
-    /// (optional add different import formats sql.dump
-    /// for now lets support json)
+    /// Imports entries from .json file
+    /// Will add support for other import file formats in future releasea
+    ///
+    /// Need
+    ///
+    /// # Panics
+    /// This function will panic if:
+    /// * File format is not supported or with no extension is provided
+    /// * can't deserialize entries
+    /// * cant't write to db
+    ///
+    /// # Basic usage:
+    /// 
+    /// let password: &str = "password";
+    /// let enc = Encrypter::unlock(password)?;
+    /// let storage = Storage::init(&encrypter)?;
+    /// storage.import("backup.json")?;
+    ///
     pub fn import(&mut self, filepath: PathBuf) -> Result<()> {
         // verify corret file
         let file = if let Some(extention) = filepath.extension() {
@@ -168,10 +269,9 @@ impl<'unlocked> Storage<'unlocked> {
             return Err(anyhow!("Inalid filetype"));
         };
 
-        // convert to Entry
         match file {
             SupportedFile::JSON(data) => {
-                let entries: Vec<ImportEntry> = serde_json::from_str(&data)?;
+                let entries: Vec<ImportedEntry> = serde_json::from_str(&data)?;
                 let total = entries.len();
 
                 for (i, import) in entries.into_iter().enumerate() {
@@ -180,9 +280,7 @@ impl<'unlocked> Storage<'unlocked> {
                     let bar = "=".repeat(percent.ceil() as usize) + &" ".repeat((100.0 - percent).ceil() as usize);
                     print!("\r[{}] {:.0}% | [{}/{}]", bar, percent, i + 1, total);
                     std::io::stdout().flush().unwrap();
-
-                    let entry = Entry::from(import);
-                    self.write(entry)?;
+                    self.write(Entry::from(import))?;
                 }
                 println!("");
             }
@@ -191,10 +289,24 @@ impl<'unlocked> Storage<'unlocked> {
         Ok(())
     }
 
-    /// (optional add different export formats sql.dump
-    /// for now lets support json)
+    /// Exports decrypted entries to .json file
+    /// Will add support for other export file formats in future release
+    ///
+    /// # Panics
+    /// This function will panic if:
+    /// * can't load all entries
+    /// * cant't open/write file
+    /// * can't serialize entries
+    ///
+    /// # Basic usage:
+    /// 
+    /// let password: &str = "password";
+    /// let enc = Encrypter::unlock(password)?;
+    /// let storage = Storage::init(&encrypter)?;
+    /// storage.export("backup.json")?;
+    ///
     pub fn export(&self, path: PathBuf) -> Result<()> {
-        let entries = self.list()?;
+        let entries = self.list()?; // get all entries
         let mut file = File::options().write(true).create(true).open(path)?;
         let objects = serde_json::to_string_pretty(&entries)?;
         writeln!(file, "{}", objects)?;

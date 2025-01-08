@@ -9,11 +9,13 @@ use argon2::{
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use rand::RngCore;
-use std::fs::{self, File};
+use std::fs::{self, set_permissions, File, Permissions};
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
+
+use crate::PROGRAM_FOLDER;
 
 #[derive(Clone)]
 pub struct Encrypter {
@@ -22,11 +24,10 @@ pub struct Encrypter {
 }
 
 impl Encrypter {
-    pub fn new(master: &str) -> Result<PathBuf, anyhow::Error> {
+    pub fn init(master: &str) -> Result<()> {
         // Generate Salt
         let mut salt = [0u8; 16];
         OsRng.fill_bytes(&mut salt);
-        let encoded_salt = STANDARD.encode(&salt);
 
         // derive password
         let derived_key = Encrypter::derive(&salt, master)?;
@@ -43,17 +44,20 @@ impl Encrypter {
             .encrypt(&nonce, &rkey[..])
             .map_err(|e| anyhow!("Error generating enryption key: {e}"))?;
         let ekey = format!("{}:{}", STANDARD.encode(nonce), STANDARD.encode(ekey));
+        let encoded_salt = STANDARD.encode(&salt);
 
         // Write keyfile
-        Encrypter::write(encoded_salt, derived_hash, ekey)?;
-        Ok(Encrypter::load_keyfile_path()?)
+        Encrypter::write_keyfile(encoded_salt, derived_hash, ekey)?;
+        Ok(())
     }
 
-    pub fn unlock(master: &str) -> Result<Self, anyhow::Error> {
+    pub fn unlock(master: &str) -> Result<Self> {
         let (salt, hash, ekey) = match Encrypter::load_keyfile_path() {
             Ok(keyfile) => Encrypter::load_keyfile(keyfile)?,
             Err(e) => {
-                return Err(anyhow!("{e} -> use init to initialize a new vault"));
+                return Err(anyhow!(
+                    "{e} -> Use 'candado vault init' to initialize a new vault."
+                ));
             }
         };
 
@@ -96,49 +100,42 @@ impl Encrypter {
         Ok(derived_key.to_vec())
     }
 
+    pub fn decompose(encrypted: &str) -> Result<(&str, &str)> {
+        if let Some((nonce, key)) = encrypted.split_once(":") {
+            Ok((nonce, key))
+        } else {
+            Err(anyhow!("Error decomposing encrypted payload"))
+        }
+    }
+
     pub fn master_key(&self) -> Result<Key<Aes256Gcm>> {
         let dkey = Key::<Aes256Gcm>::from_slice(&self.derived_key);
         let cypher = Aes256Gcm::new(dkey);
-        let (nonce, key) = if let Some((nonce, key)) = self.encrpytion_key.split_once(":") {
-            (nonce, key)
-        } else {
-            return Err(anyhow!("Encryption key invalid"));
-        };
-
-        let decoded_nonce = STANDARD.decode(nonce)?;
-        let decoded_key = STANDARD.decode(key)?;
-
+        let (nonce, key) = Encrypter::decompose(&self.encrpytion_key)?;
+        let nonce = STANDARD.decode(nonce)?;
+        let key = STANDARD.decode(key)?;
         let rkey = cypher
-            .decrypt(Nonce::from_slice(&decoded_nonce), decoded_key.as_ref())
+            .decrypt(Nonce::from_slice(&nonce), key.as_ref())
             .map_err(|e| anyhow!("Failed to decrypt ekey: {e}"))?;
         Ok(*Key::<Aes256Gcm>::from_slice(&rkey))
     }
 
-    pub fn decrypt(&self, payload: &[u8]) -> Result<String, anyhow::Error> {
+    pub fn decrypt(&self, payload: &[u8]) -> Result<String> {
         let rkey = self.master_key()?;
         let cypher = Aes256Gcm::new(&rkey);
         let content = String::from_utf8_lossy(&payload).to_string();
-
-        let (nonce, msg) = if let Some((nonce, msg)) = content.split_once(":") {
-            (nonce, msg)
-        } else {
-            return Err(anyhow!("Encryption key format invalid"));
-        };
-
+        let (nonce, msg) = Encrypter::decompose(&content)?;
         let msg = STANDARD.decode(msg)?;
         let nonce = STANDARD.decode(nonce)?;
         let nonce = Nonce::from_slice(&nonce);
-
         let plain = cypher
             .decrypt(&nonce, msg.as_slice())
             .map_err(|e| anyhow!("Failed to encrypt data: {e}"))?;
-
         Ok(String::from_utf8_lossy(&plain).to_string())
     }
 
-    pub fn encrypt(&self, plain: &str) -> Result<Vec<u8>, anyhow::Error> {
+    pub fn encrypt(&self, plain: &str) -> Result<Vec<u8>> {
         let rkey = self.master_key()?;
-
         let cypher = Aes256Gcm::new(&rkey);
         let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
         let payload = cypher
@@ -151,9 +148,29 @@ impl Encrypter {
         )
     }
 
-    fn load_keyfile(keyfile: PathBuf) -> Result<(Vec<u8>, String, String), anyhow::Error> {
+    pub fn load_keyfile_path() -> Result<PathBuf> {
+        // Linux
+        #[cfg(target_os = "linux")]
+        let keypath = format!("{}/.candado/.candado.key", std::env::var("HOME")?);
+
+        // NOTE: Support for Mac os and Windows will be added in the future
+        // MacOs
+        // #[cfg(target_os = "macos")]
+        // let keypath = format!("{}/.candado/.candado.key", std::env::var("HOME")?);
+        // windows
+        // #[cfg(target_os = "windows")]
+        // let keypath = format!("{}/.passlock/passlock.key", std::env::var("USERHOME")?);
+
+        let keyfile = Path::new(&keypath);
+        if !keyfile.exists() {
+            return Err(anyhow!("Keyfile not found"));
+        }
+        Ok(keyfile.to_path_buf())
+    }
+
+    fn load_keyfile(keyfile: PathBuf) -> Result<(Vec<u8>, String, String)> {
         let keyfile = fs::read(keyfile)?;
-        let raw = STANDARD.decode(keyfile).expect("Failed to decode keyfile");
+        let raw = STANDARD.decode(keyfile)?;
         let content = String::from_utf8_lossy(&raw).to_string();
         let keys: Vec<&str> = content.splitn(3, ' ').collect();
         Ok((
@@ -163,36 +180,15 @@ impl Encrypter {
         ))
     }
 
-    pub fn load_keyfile_path() -> Result<PathBuf, anyhow::Error> {
+    fn write_keyfile(salt: String, hash: String, ekey: String) -> Result<()> {
         // Linux
         #[cfg(target_os = "linux")]
-        let keypath = format!("{}/.candado/.candado.key", std::env::var("HOME")?);
+        let dir_path = format!("{}/{}", std::env::var("HOME")?, PROGRAM_FOLDER);
 
-        // MacOs
-        // #[cfg(target_os = "macos")]
-        // let keypath = format!("{}/.candado/.candado.key", std::env::var("HOME")?);
-
-        // windows
-        #[cfg(target_os = "windows")]
-        let keypath = format!("{}/.passlock/passlock.key", std::env::var("USERHOME")?);
-
-        let keyfile = Path::new(&keypath);
-        if !keyfile.exists() {
-            return Err(anyhow!("Keyfile not found"));
-        }
-
-        Ok(keyfile.to_owned())
-    }
-
-    fn write(salt: String, hash: String, ekey: String) -> Result<(), anyhow::Error> {
-        // Linux
-        #[cfg(target_os = "linux")]
-        let dir_path = format!("{}/.candado", std::env::var("HOME")?);
-
+        // NOTE: Support for Mac os and Windows will be added in the future
         // MacOs
         // #[cfg(target_os = "macos")]
         // let dir_path = format!("{}/.candado", std::env::var("HOME")?);
-
         // windows
         // #[cfg(target_os = "windows")]
         // let dir_path = format!("{}/.passlock/passlock.key", std::env::var("USERHOME")?);
@@ -200,19 +196,14 @@ impl Encrypter {
         let dir_path = Path::new(&dir_path);
         if !dir_path.exists() {
             fs::create_dir(dir_path)?;
-            let permissions = std::fs::Permissions::from_mode(0o700);
-            std::fs::set_permissions(dir_path, permissions)?;
+            set_permissions(dir_path, Permissions::from_mode(0o700))?;
         }
-
-        let keypath = format!("{}/.candado/.candado.key", std::env::var("HOME")?);
+        let keypath = format!("{}/{}/.candado.key", std::env::var("HOME")?, PROGRAM_FOLDER);
         let keypath = Path::new(&keypath);
         let mut keyfile = File::options().write(true).create(true).open(keypath)?;
         let payload = format!("{} {} {}", salt, hash, ekey);
-
         keyfile.write_all(STANDARD.encode(payload).as_bytes())?;
-
-        let permissions = std::fs::Permissions::from_mode(0o600);
-        std::fs::set_permissions(keypath, permissions)?;
+        set_permissions(keypath, Permissions::from_mode(0o600))?;
         Ok(())
     }
 }

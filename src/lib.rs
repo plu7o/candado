@@ -10,48 +10,26 @@ pub use entry::Entry;
 use rpassword::prompt_password;
 pub use storage::Storage;
 
-use anyhow::{anyhow, Result};
-use std::{fs, io::Write, path::PathBuf};
+use anyhow::Result;
+use std::path::PathBuf;
 
-pub const VERSION: &str = "V1.0.0";
+pub const VERSION: &str = "V1.0.2";
 pub const ABOUT: &str = "Candado a Local Encrypted Password Manager & Secret Generator";
 pub const PREFIX: &str = "Candado \u{f023}";
+pub const PROGRAM_FOLDER: &str = ".candado";
 
 //------------------------------------------
 // Manager
 //------------------------------------------
 
 pub fn init() -> Result<()> {
-    println!("Initializing new Vault!");
+    let password = prompt_password(format!("{} Enter new master: ", PREFIX.green()))?;
+    Encrypter::init(&password)
+}
 
-    if Encrypter::load_keyfile_path().is_ok() {
-        println!("WARNING there is already a existing Vault!");
-        println!("continuing will permantly delete the exsting vault.");
-        print!("are you sure? [y/n]: ");
-        std::io::stdout().flush().unwrap();
-
-        let mut buffer = String::new();
-        std::io::stdin().read_line(&mut buffer)?;
-
-        match buffer.trim() {
-            "y" | "Y" | "yes" | "YES" => {
-                println!("Deleting vault...");
-                let path = format!("{}/.candado", std::env::var("HOME")?);
-                fs::remove_dir_all(path)?;
-            }
-            _ => {
-                return Err(anyhow!("Aborted."));
-            }
-        }
-    }
-
-    println!("WARNING");
-    println!("Make sure to use a strong password! Do not only rely on encryption.");
-    println!("Make sure to remember your passwort or saved it in a safe location, you CAN'T recover access if you loose your password!");
+pub fn unlock() -> Result<Encrypter> {
     let password = prompt_password(format!("{} Enter Master: ", PREFIX.green()))?;
-    println!("Generating new keyfile...");
-    Encrypter::new(&password)?;
-    Ok(())
+    Encrypter::unlock(&password)
 }
 
 pub fn ls(encrypter: Encrypter) -> Result<Vec<Entry>> {
@@ -62,7 +40,7 @@ pub fn rm(encrypter: Encrypter, id: &str) -> Result<()> {
     Storage::init(&encrypter)?.remove(id)
 }
 
-pub fn read(encrypter: Encrypter, id: &str) -> Result<Entry, anyhow::Error> {
+pub fn read(encrypter: Encrypter, id: &str) -> Result<Entry> {
     Storage::init(&encrypter)?.read(id)
 }
 
@@ -73,22 +51,8 @@ pub fn add(
     password: Option<String>,
     username: Option<String>,
     url: Option<String>,
-) -> Result<(), anyhow::Error> {
-    let password = if let Some(pass) = password {
-        pass.to_owned()
-    } else {
-        generators::gen_passphrase(4, &None)
-    };
-
-    let entry = Entry::new(
-        generators::gen_key(12),
-        service,
-        email,
-        password,
-        username.unwrap_or("".to_string()),
-        url.unwrap_or("".to_string()),
-    );
-    Storage::init(&encrypter)?.write(entry)
+) -> Result<()> {
+    Storage::init(&encrypter)?.write(Entry::new(service, email, password, username, url))
 }
 
 pub fn update(
@@ -102,11 +66,7 @@ pub fn update(
 ) -> Result<()> {
     let storage = Storage::init(&encrypter)?;
     let mut entry = storage.read(id)?;
-    entry.service = service.unwrap_or(entry.service);
-    entry.email = email.unwrap_or(entry.email);
-    entry.password = password.unwrap_or(entry.password);
-    entry.username = username.unwrap_or(entry.username);
-    entry.url = url.unwrap_or(entry.url);
+    entry.overite(service, email, password, username, url);
     storage.update(entry)
 }
 
@@ -120,15 +80,6 @@ pub fn import(encrypter: Encrypter, file: PathBuf) -> Result<()> {
 
 pub fn export(encrypter: Encrypter, file: PathBuf) -> Result<()> {
     Storage::init(&encrypter)?.export(file)
-}
-
-pub fn login() -> Result<Encrypter, anyhow::Error> {
-    let password = prompt_password(format!("{} Enter Master: ", PREFIX.green()))?;
-    Encrypter::unlock(&password)
-}
-
-pub fn logout() -> Result<(), anyhow::Error> {
-    todo!("Logout not implemented")
 }
 
 //------------------------------------------
@@ -154,6 +105,38 @@ pub fn passphrase(length: u32, wordlist: &Option<PathBuf>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // TODO: Add tests!
+
+    #[test]
+    fn test_init() {}
+
+    #[test]
+    fn test_unlock() {}
+
+    #[test]
+    fn test_ls() {}
+
+    #[test]
+    fn test_rm() {}
+
+    #[test]
+    fn test_read() {}
+
+    #[test]
+    fn test_add() {}
+
+    #[test]
+    fn test_update() {}
+
+    #[test]
+    fn test_find() {}
+
+    #[test]
+    fn import() {}
+
+    #[test]
+    fn export() {}
 
     #[test]
     fn test_gen_password() {
